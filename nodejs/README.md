@@ -1,8 +1,8 @@
 ## Usage
-`uws` tries to mimic `ws` as closely as possible without sacrificing too much performance. In most cases you simply swap `require('ws')` with `require('uws')`:
+`sc-uws` tries to mimic `ws` as closely as possible without sacrificing too much performance. In most cases you simply swap `require('ws')` with `require('sc-uws')`:
 
 ```javascript
-var WebSocketServer = require('uws').Server;
+var WebSocketServer = require('sc-uws').Server;
 var wss = new WebSocketServer({ port: 3000 });
 
 function onMessage(message) {
@@ -25,8 +25,7 @@ There are some important incompatibilities with `ws` though, we aim to be ~90% c
 * `webSocket.upgradeReq` is only valid during execution of the connection handler. If you want to keep properties of the upgradeReq for the entire lifetime of the webSocket you better attach that specific property to the webSocket at connection.
 
 ## Installation
-[![](https://nodei.co/npm/uws.png)](https://www.npmjs.com/package/uws)
 
-At installation `uws` will try to recompile itself using the system's C++11 compiler (GCC 4.8+, Clang 3.3, VC++ 2015+).
+At installation `sc-uws` will try to recompile itself using the system's C++11 compiler (GCC 4.8+, Clang 3.3, VC++ 2015+).
 If this fails it will silently fall back to using the precompiled binaries.
-NPM installation will never fail but `require('uws')` will throw if it cannot properly load the binary module.
+NPM installation will never fail but `require('sc-uws')` will throw if it cannot properly load the binary module.
