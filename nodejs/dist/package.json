@@ -1,6 +1,6 @@
 {
   "name": "sc-uws",
-  "version": "10.0.1",
+  "version": "10.148.0",
   "scripts": {
     "install": "node-gyp rebuild > build_log.txt 2>&1 || exit 0"
   },
@@ -13,7 +13,7 @@
     "tiny",
     "websockets"
   ],
-  "homepage": "https://github.com/uWebSockets/uWebSockets",
+  "homepage": "https://github.com/uNetworking/uWebSockets",
   "license": "Zlib",
   "author": "Alex Hultman <alexhultman@gmail.com> (https://github.com/alexhultman)",
   "repository": {
