@@ -38,7 +38,7 @@ const native = (() => {
             error = new Error('µWebSockets requires Node.js 6.4.0 or greater on Windows');
         } else {
             error = new Error('Compilation of µWebSockets has failed and there is no pre-compiled binary ' +
-            'available for your system. Please install a supported C++11 compiler and reinstall the module \'uws\'');
+            'available for your system. Please install a supported C++11 compiler and reinstall the module \'sc-uws\'');
         }
         error.name = 'WSEngineInitError';
         throw error;
