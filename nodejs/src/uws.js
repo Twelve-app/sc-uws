@@ -410,7 +410,7 @@ class Server extends EventEmitter {
             }
 
             this.httpServer.on('upgrade', this._upgradeListener = ((request, socket, head) => {
-                if (!options.path || options.path == request.url.split('?')[0].split('#')[0]) {
+                if (!options.path || options.path === request.url.split('?')[0].split('#')[0]) {
                     if (options.verifyClient) {
                         const info = {
                             origin: request.headers.origin,
@@ -508,7 +508,7 @@ class Server extends EventEmitter {
             const secKey = request.headers['sec-websocket-key'];
             const socketHandle = socket.ssl ? socket._parent._handle : socket._handle;
             const sslState = socket.ssl ? socket.ssl._external : null;
-            if (socketHandle && secKey && secKey.length == 24) {
+            if (socketHandle && secKey && secKey.length === 24) {
                 socket.setNoDelay(this._noDelay);
                 const ticket = native.transfer(socketHandle.fd === -1 ? socketHandle : socketHandle.fd, sslState);
                 socket.on('close', (error) => {
