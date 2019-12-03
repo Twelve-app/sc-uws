@@ -34,7 +34,11 @@ public:
             data = nullptr;
             length = 0;
         } else if (value->IsString()) {
+            #if V8_MAJOR_VERSION >= 7
+            utf8Value = new (utf8ValueMemory) String::Utf8Value(v8::Isolate::GetCurrent(), value);
+            #else
             utf8Value = new (utf8ValueMemory) String::Utf8Value(value);
+            #endif
             data = (**utf8Value);
             length = utf8Value->length();
         } else if (node::Buffer::HasInstance(value)) {
@@ -76,7 +80,14 @@ struct GroupData {
 
 template <bool isServer>
 void createGroup(const FunctionCallbackInfo<Value> &args) {
+    #if V8_MAJOR_VERSION >= 7
+    uWS::Group<isServer> *group = hub.createGroup<isServer>(
+        args[0]->IntegerValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust(),
+        args[1]->IntegerValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust()
+    );
+    #else
     uWS::Group<isServer> *group = hub.createGroup<isServer>(args[0]->IntegerValue(), args[1]->IntegerValue());
+    #endif
     group->setUserData(new GroupData);
     args.GetReturnValue().Set(External::New(args.GetIsolate(), group));
 }
@@ -169,7 +180,11 @@ void sendCallback(uWS::WebSocket<isServer> *webSocket, void *data, bool cancelle
 template <bool isServer>
 void send(const FunctionCallbackInfo<Value> &args)
 {
+    #if V8_MAJOR_VERSION >= 7
+    uWS::OpCode opCode = (uWS::OpCode) args[2]->IntegerValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust();
+    #else
     uWS::OpCode opCode = (uWS::OpCode) args[2]->IntegerValue();
+    #endif
     NativeString nativeString(args[1]);
 
     SendCallbackData *sc = nullptr;
@@ -181,8 +196,12 @@ void send(const FunctionCallbackInfo<Value> &args)
         sc->jsCallback.Reset(args.GetIsolate(), Local<Function>::Cast(args[3]));
         sc->isolate = args.GetIsolate();
     }
-    
+
+    #if V8_MAJOR_VERSION >= 7
+    bool compress = args[4]->BooleanValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust();
+    #else
     bool compress = args[4]->BooleanValue();
+    #endif
 
     unwrapSocket<isServer>(args[0].As<External>())->send(nativeString.getData(),
                            nativeString.getLength(), opCode, callback, sc, compress);
@@ -222,9 +241,20 @@ void transfer(const FunctionCallbackInfo<Value> &args) {
     uv_handle_t *handle = nullptr;
     Ticket *ticket = new Ticket;
     if (args[0]->IsObject()) {
+        #if V8_MAJOR_VERSION >= 7
+        uv_fileno(
+            (handle = getTcpHandle(args[0]->ToObject(v8::Isolate::GetCurrent()->GetCurrentContext()).ToLocalChecked()->GetAlignedPointerFromInternalField(0))),
+            (uv_os_fd_t *) &ticket->fd
+        );
+        #else
         uv_fileno((handle = getTcpHandle(args[0]->ToObject()->GetAlignedPointerFromInternalField(0))), (uv_os_fd_t *) &ticket->fd);
+        #endif
     } else {
+        #if V8_MAJOR_VERSION >= 7
+        ticket->fd = args[0]->IntegerValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust();
+        #else
         ticket->fd = args[0]->IntegerValue();
+        #endif
     }
 
     ticket->fd = dup(ticket->fd);
@@ -271,7 +301,11 @@ void onMessage(const FunctionCallbackInfo<Value> &args) {
         HandleScope hs(isolate);
         Local<Value> argv[] = {wrapMessage(message, length, opCode, isolate),
                                getDataV8(webSocket, isolate)};
+        #if V8_MAJOR_VERSION >= 7
+        Local<Function>::New(isolate, *messageCallback)->Call(isolate->GetCurrentContext(), isolate->GetCurrentContext()->Global(), 2, argv);
+        #else
         Local<Function>::New(isolate, *messageCallback)->Call(isolate->GetCurrentContext()->Global(), 2, argv);
+        #endif
     });
 }
 
@@ -348,7 +382,15 @@ void onError(const FunctionCallbackInfo<Value> &args) {
 template <bool isServer>
 void closeSocket(const FunctionCallbackInfo<Value> &args) {
     NativeString nativeString(args[2]);
+    #if V8_MAJOR_VERSION >= 7
+    unwrapSocket<isServer>(args[0].As<External>())->close(
+        args[1]->IntegerValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust(),
+        nativeString.getData(),
+        nativeString.getLength()
+    );
+    #else
     unwrapSocket<isServer>(args[0].As<External>())->close(args[1]->IntegerValue(), nativeString.getData(), nativeString.getLength());
+    #endif
 }
 
 template <bool isServer>
@@ -360,7 +402,15 @@ template <bool isServer>
 void closeGroup(const FunctionCallbackInfo<Value> &args) {
     NativeString nativeString(args[2]);
     uWS::Group<isServer> *group = (uWS::Group<isServer> *) args[0].As<External>()->Value();
+    #if V8_MAJOR_VERSION >= 7
+    group->close(
+        args[1]->IntegerValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust(),
+        nativeString.getData(),
+        nativeString.getLength()
+    );
+    #else
     group->close(args[1]->IntegerValue(), nativeString.getData(), nativeString.getLength());
+    #endif
 }
 
 template <bool isServer>
@@ -371,14 +421,24 @@ void terminateGroup(const FunctionCallbackInfo<Value> &args) {
 template <bool isServer>
 void broadcast(const FunctionCallbackInfo<Value> &args) {
     uWS::Group<isServer> *group = (uWS::Group<isServer> *) args[0].As<External>()->Value();
+    #if V8_MAJOR_VERSION >= 7
+    uWS::OpCode opCode = args[2]->BooleanValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust()
+        ? uWS::OpCode::BINARY
+        : uWS::OpCode::TEXT;
+    #else
     uWS::OpCode opCode = args[2]->BooleanValue() ? uWS::OpCode::BINARY : uWS::OpCode::TEXT;
+    #endif
     NativeString nativeString(args[1]);
     group->broadcast(nativeString.getData(), nativeString.getLength(), opCode);
 }
 
 template <bool isServer>
 void prepareMessage(const FunctionCallbackInfo<Value> &args) {
+    #if V8_MAJOR_VERSION >= 7
+    uWS::OpCode opCode = (uWS::OpCode) args[1]->IntegerValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust();
+    #else
     uWS::OpCode opCode = (uWS::OpCode) args[1]->IntegerValue();
+    #endif
     NativeString nativeString(args[0]);
     args.GetReturnValue().Set(External::New(args.GetIsolate(), uWS::WebSocket<isServer>::prepareMessage(nativeString.getData(), nativeString.getLength(), opCode, false)));
 }
@@ -402,7 +462,11 @@ void forEach(const FunctionCallbackInfo<Value> &args) {
         Local<Value> argv[] = {
             getDataV8(webSocket, isolate)
         };
+        #if V8_MAJOR_VERSION >= 7
+        cb->Call(v8::Isolate::GetCurrent()->GetCurrentContext(), Null(isolate), 1, argv);
+        #else
         cb->Call(Null(isolate), 1, argv);
+        #endif
     });
 }
 
@@ -415,7 +479,14 @@ void getSize(const FunctionCallbackInfo<Value> &args) {
 void startAutoPing(const FunctionCallbackInfo<Value> &args) {
     uWS::Group<uWS::SERVER> *group = (uWS::Group<uWS::SERVER> *) args[0].As<External>()->Value();
     NativeString nativeString(args[2]);
+    #if V8_MAJOR_VERSION >= 7
+    group->startAutoPing(
+        args[1]->IntegerValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust(),
+        std::string(nativeString.getData(), nativeString.getLength())
+    );
+    #else
     group->startAutoPing(args[1]->IntegerValue(), std::string(nativeString.getData(), nativeString.getLength()));
+    #endif
 }
 
 void setNoop(const FunctionCallbackInfo<Value> &args) {
@@ -424,7 +495,14 @@ void setNoop(const FunctionCallbackInfo<Value> &args) {
 
 void listen(const FunctionCallbackInfo<Value> &args) {
     uWS::Group<uWS::SERVER> *group = (uWS::Group<uWS::SERVER> *) args[0].As<External>()->Value();
+    #if V8_MAJOR_VERSION >= 7
+    hub.listen(
+        args[1]->IntegerValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust(),
+        nullptr, 0, group
+    );
+    #else
     hub.listen(args[1]->IntegerValue(), nullptr, 0, group);
+    #endif
 }
 
 template <bool isServer>

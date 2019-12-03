@@ -1,5 +1,5 @@
 {
-  "name": "sc-uws",
+  "name": "@yuboapp/sc-uws",
   "version": "10.148.2",
   "scripts": {
     "install": "node-gyp rebuild > build_log.txt 2>&1 || exit 0"
