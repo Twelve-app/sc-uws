@@ -45,15 +45,29 @@ public:
             data = node::Buffer::Data(value);
             length = node::Buffer::Length(value);
         } else if (value->IsTypedArray()) {
+            #if V8_MAJOR_VERSION >= 10
+            Local<ArrayBufferView> arrayBufferView = Local<ArrayBufferView>::Cast(value);
+            auto backingStore = arrayBufferView->Buffer()->GetBackingStore();
+            length = backingStore->ByteLength();
+            data = (char *) backingStore->Data();
+            #else
             Local<ArrayBufferView> arrayBufferView = Local<ArrayBufferView>::Cast(value);
             ArrayBuffer::Contents contents = arrayBufferView->Buffer()->GetContents();
             length = contents.ByteLength();
             data = (char *) contents.Data();
+            #endif
         } else if (value->IsArrayBuffer()) {
+            #if V8_MAJOR_VERSION >= 10
+            Local<ArrayBuffer> arrayBuffer = Local<ArrayBuffer>::Cast(value);
+            auto backingStore = arrayBuffer->GetBackingStore();
+            length = backingStore->ByteLength();
+            data = (char *) backingStore->Data();
+            #else
             Local<ArrayBuffer> arrayBuffer = Local<ArrayBuffer>::Cast(value);
             ArrayBuffer::Contents contents = arrayBuffer->GetContents();
             length = contents.ByteLength();
             data = (char *) contents.Data();
+            #endif
         } else {
             static char empty[] = "";
             data = empty;
@@ -110,7 +124,19 @@ inline uWS::WebSocket<isServer> *unwrapSocket(Local<External> external) {
 }
 
 inline Local<Value> wrapMessage(const char *message, size_t length, uWS::OpCode opCode, Isolate *isolate) {
-    return opCode == uWS::OpCode::BINARY ? (Local<Value>) ArrayBuffer::New(isolate, (char *) message, length) : (Local<Value>) String::NewFromUtf8(isolate, message, String::kNormalString, length);
+    #if V8_MAJOR_VERSION >= 10
+    if (opCode == uWS::OpCode::BINARY) {
+        std::unique_ptr<v8::BackingStore> backing = ArrayBuffer::NewBackingStore(
+            (char *) message, length, [](void*, size_t, void*){}, nullptr);
+        return ArrayBuffer::New(isolate, std::move(backing));
+    } else {
+        return String::NewFromUtf8(isolate, message, NewStringType::kNormal, length).ToLocalChecked();
+    }
+    #else
+    return opCode == uWS::OpCode::BINARY ?
+        (Local<Value>) ArrayBuffer::New(isolate, (char *) message, length) :
+        (Local<Value>) String::NewFromUtf8(isolate, message, String::kNormalString, length);
+    #endif
 }
 
 template <bool isServer>
@@ -145,9 +171,15 @@ void getAddress(const FunctionCallbackInfo<Value> &args)
 {
     typename uWS::WebSocket<isServer>::Address address = unwrapSocket<isServer>(args[0].As<External>())->getAddress();
     Local<Array> array = Array::New(args.GetIsolate(), 3);
+    #if V8_MAJOR_VERSION >= 10
+    array->Set(args.GetIsolate()->GetCurrentContext(), 0, Integer::New(args.GetIsolate(), address.port));
+    array->Set(args.GetIsolate()->GetCurrentContext(), 1, String::NewFromUtf8(args.GetIsolate(), address.address).ToLocalChecked());
+    array->Set(args.GetIsolate()->GetCurrentContext(), 2, String::NewFromUtf8(args.GetIsolate(), address.family).ToLocalChecked());
+    #else
     array->Set(0, Integer::New(args.GetIsolate(), address.port));
     array->Set(1, String::NewFromUtf8(args.GetIsolate(), address.address));
     array->Set(2, String::NewFromUtf8(args.GetIsolate(), address.family));
+    #endif
     args.GetReturnValue().Set(array);
 }
 
@@ -196,8 +228,9 @@ void send(const FunctionCallbackInfo<Value> &args)
         sc->jsCallback.Reset(args.GetIsolate(), Local<Function>::Cast(args[3]));
         sc->isolate = args.GetIsolate();
     }
-
-    #if V8_MAJOR_VERSION >= 7
+    #if V8_MAJOR_VERSION >= 10
+    bool compress = args[4]->BooleanValue(args.GetIsolate());
+    #elif V8_MAJOR_VERSION >= 7
     bool compress = args[4]->BooleanValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust();
     #else
     bool compress = args[4]->BooleanValue();
@@ -421,7 +454,11 @@ void terminateGroup(const FunctionCallbackInfo<Value> &args) {
 template <bool isServer>
 void broadcast(const FunctionCallbackInfo<Value> &args) {
     uWS::Group<isServer> *group = (uWS::Group<isServer> *) args[0].As<External>()->Value();
-    #if V8_MAJOR_VERSION >= 7
+    #if V8_MAJOR_VERSION >= 10
+    uWS::OpCode opCode = args[2]->BooleanValue(args.GetIsolate())
+        ? uWS::OpCode::BINARY
+        : uWS::OpCode::TEXT;
+    #elif V8_MAJOR_VERSION >= 7
     uWS::OpCode opCode = args[2]->BooleanValue(v8::Isolate::GetCurrent()->GetCurrentContext()).FromJust()
         ? uWS::OpCode::BINARY
         : uWS::OpCode::TEXT;
@@ -539,6 +576,10 @@ struct Namespace {
         NODE_SET_METHOD(group, "terminate", terminateGroup<isServer>);
         NODE_SET_METHOD(group, "broadcast", broadcast<isServer>);
 
+        #if V8_MAJOR_VERSION >= 10
+        object->Set(isolate->GetCurrentContext(), String::NewFromUtf8(isolate, "group").ToLocalChecked(), group);
+        #else
         object->Set(String::NewFromUtf8(isolate, "group"), group);
+        #endif
     }
 };

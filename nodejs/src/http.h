@@ -95,6 +95,16 @@ struct HttpServer {
 
         static Local<Object> getTemplateObject(Isolate *isolate) {
             Local<FunctionTemplate> reqTemplateLocal = FunctionTemplate::New(isolate);
+            #if V8_MAJOR_VERSION >= 10
+            reqTemplateLocal->SetClassName(String::NewFromUtf8(isolate, "uws.Request").ToLocalChecked());
+            reqTemplateLocal->InstanceTemplate()->SetInternalFieldCount(5);
+            reqTemplateLocal->PrototypeTemplate()->SetAccessor(String::NewFromUtf8(isolate, "url").ToLocalChecked(), Request::url);
+            reqTemplateLocal->PrototypeTemplate()->SetAccessor(String::NewFromUtf8(isolate, "method").ToLocalChecked(), Request::method);
+            reqTemplateLocal->PrototypeTemplate()->Set(isolate, "on", FunctionTemplate::New(isolate, Request::on));
+            reqTemplateLocal->PrototypeTemplate()->Set(isolate, "unpipe", FunctionTemplate::New(isolate, Request::unpipe));
+            reqTemplateLocal->PrototypeTemplate()->Set(isolate, "resume", FunctionTemplate::New(isolate, Request::resume));
+            reqTemplateLocal->PrototypeTemplate()->Set(isolate, "socket", FunctionTemplate::New(isolate, Request::socket));
+            #else
             reqTemplateLocal->SetClassName(String::NewFromUtf8(isolate, "uws.Request"));
             reqTemplateLocal->InstanceTemplate()->SetInternalFieldCount(5);
             reqTemplateLocal->PrototypeTemplate()->SetAccessor(String::NewFromUtf8(isolate, "url"), Request::url);
@@ -103,6 +113,7 @@ struct HttpServer {
             reqTemplateLocal->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "unpipe"), FunctionTemplate::New(isolate, Request::unpipe));
             reqTemplateLocal->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "resume"), FunctionTemplate::New(isolate, Request::resume));
             reqTemplateLocal->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "socket"), FunctionTemplate::New(isolate, Request::socket));
+            #endif
 
             #if V8_MAJOR_VERSION >= 7
             Local<Object> reqObjectLocal = reqTemplateLocal->GetFunction(isolate->GetCurrentContext()).ToLocalChecked()->NewInstance(isolate->GetCurrentContext()).ToLocalChecked();
@@ -116,8 +127,11 @@ struct HttpServer {
             namedPropertyConfig.getter = Request::headers;
             namedPropertyConfig.flags = v8::PropertyHandlerFlags::kOnlyInterceptStrings;
             headersTemplate->SetHandler(namedPropertyConfig);
-
+            #if V8_MAJOR_VERSION >= 10
+            reqObjectLocal->Set(isolate->GetCurrentContext(), String::NewFromUtf8(isolate, "headers").ToLocalChecked(), headersTemplate->NewInstance(isolate->GetCurrentContext()).ToLocalChecked());
+            #else
             reqObjectLocal->Set(String::NewFromUtf8(isolate, "headers"), headersTemplate->NewInstance(isolate->GetCurrentContext()).ToLocalChecked());
+            #endif
             #else
             headersTemplate->SetNamedPropertyHandler(Request::headers);
 
@@ -180,8 +194,13 @@ struct HttpServer {
                     Local<Array> headers = headersObject->GetOwnPropertyNames();
                     #endif
                     for (int i = 0; i < headers->Length(); i++) {
+                        #if V8_MAJOR_VERSION >= 10
+                        Local<Value> key = headers->Get(args.GetIsolate()->GetCurrentContext(), i).ToLocalChecked();
+                        Local<Value> value = headersObject->Get(args.GetIsolate()->GetCurrentContext(), key).ToLocalChecked();
+                        #else
                         Local<Value> key = headers->Get(i);
                         Local<Value> value = headersObject->Get(key);
+                        #endif
 
                         NativeString nativeKey(key);
                         NativeString nativeValue(value);
@@ -218,6 +237,16 @@ struct HttpServer {
 
         static Local<Object> getTemplateObject(Isolate *isolate) {
             Local<FunctionTemplate> resTemplateLocal = FunctionTemplate::New(isolate);
+            #if V8_MAJOR_VERSION >= 10
+            resTemplateLocal->SetClassName(String::NewFromUtf8(isolate, "uws.Response").ToLocalChecked());
+            resTemplateLocal->InstanceTemplate()->SetInternalFieldCount(5);
+            resTemplateLocal->PrototypeTemplate()->Set(isolate, "end", FunctionTemplate::New(isolate, Response::end));
+            resTemplateLocal->PrototypeTemplate()->Set(isolate, "writeHead", FunctionTemplate::New(isolate, Response::writeHead));
+            resTemplateLocal->PrototypeTemplate()->Set(isolate, "write", FunctionTemplate::New(isolate, Response::write));
+            resTemplateLocal->PrototypeTemplate()->Set(isolate, "on", FunctionTemplate::New(isolate, Response::on));
+            resTemplateLocal->PrototypeTemplate()->Set(isolate, "setHeader", FunctionTemplate::New(isolate, Response::setHeader));
+            resTemplateLocal->PrototypeTemplate()->Set(isolate, "getHeader", FunctionTemplate::New(isolate, Response::getHeader));
+            #else
             resTemplateLocal->SetClassName(String::NewFromUtf8(isolate, "uws.Response"));
             resTemplateLocal->InstanceTemplate()->SetInternalFieldCount(5);
             resTemplateLocal->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "end"), FunctionTemplate::New(isolate, Response::end));
@@ -226,6 +255,7 @@ struct HttpServer {
             resTemplateLocal->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "on"), FunctionTemplate::New(isolate, Response::on));
             resTemplateLocal->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "setHeader"), FunctionTemplate::New(isolate, Response::setHeader));
             resTemplateLocal->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "getHeader"), FunctionTemplate::New(isolate, Response::getHeader));
+            #endif
             #if V8_MAJOR_VERSION >= 7
             return resTemplateLocal->GetFunction(isolate->GetCurrentContext()).ToLocalChecked()->NewInstance(isolate->GetCurrentContext()).ToLocalChecked();
             #else
@@ -273,7 +303,12 @@ struct HttpServer {
             if (length) {
                 Local<Value> dataCallback = reqObject->GetInternalField(1);
                 if (!dataCallback->IsUndefined()) {
-                    Local<Value> argv[] = {ArrayBuffer::New(isolate, data, length)};
+                    #if V8_MAJOR_VERSION >= 10
+                    std::unique_ptr<v8::BackingStore> backing = ArrayBuffer::NewBackingStore(data, length, [](void*, size_t, void*){}, nullptr);
+                    Local<Value> argv[] = { ArrayBuffer::New(isolate, std::move(backing)) };
+                    #else
+                    Local<Value> argv[] = { ArrayBuffer::New(isolate, data, length) };
+                    #endif
                     #if V8_MAJOR_VERSION >= 7
                     Local<Function>::Cast(dataCallback)->Call(isolate->GetCurrentContext(), isolate->GetCurrentContext()->Global(), 1, argv);
                     #else
@@ -329,7 +364,12 @@ struct HttpServer {
 
             Local<Value> dataCallback = reqObject->GetInternalField(1);
             if (!dataCallback->IsUndefined()) {
-                Local<Value> argv[] = {ArrayBuffer::New(isolate, data, length)};
+                #if V8_MAJOR_VERSION >= 10
+                std::unique_ptr<v8::BackingStore> backing = ArrayBuffer::NewBackingStore(data, length, [](void*, size_t, void*){}, nullptr);
+                Local<Value> argv[] = { ArrayBuffer::New(isolate, std::move(backing)) };
+                #else
+                Local<Value> argv[] = { ArrayBuffer::New(isolate, data, length) };
+                #endif
                 #if V8_MAJOR_VERSION >= 7
                 Local<Function>::Cast(dataCallback)->Call(isolate->GetCurrentContext(), isolate->GetCurrentContext()->Global(), 1, argv);
                 #else
@@ -387,7 +427,10 @@ struct HttpServer {
         if (args[0]->IsFunction()) {
             Local<Function> express = Local<Function>::Cast(args[0]);
             Local<Context> context = args.GetIsolate()->GetCurrentContext();
-            #if V8_MAJOR_VERSION >= 7
+            #if V8_MAJOR_VERSION >= 10
+            express->Get(context, String::NewFromUtf8(isolate, "request").ToLocalChecked()).ToLocalChecked()->ToObject(context).ToLocalChecked()->SetPrototype(context, Local<Object>::New(args.GetIsolate(), reqTemplate)->GetPrototype());
+            express->Get(context, String::NewFromUtf8(isolate, "response").ToLocalChecked()).ToLocalChecked()->ToObject(context).ToLocalChecked()->SetPrototype(context, Local<Object>::New(args.GetIsolate(), resTemplate)->GetPrototype());
+            #elif V8_MAJOR_VERSION >= 7
             express->Get(String::NewFromUtf8(isolate, "request"))->ToObject(context).ToLocalChecked()->SetPrototype(context, Local<Object>::New(args.GetIsolate(), reqTemplate)->GetPrototype());
             express->Get(String::NewFromUtf8(isolate, "response"))->ToObject(context).ToLocalChecked()->SetPrototype(context, Local<Object>::New(args.GetIsolate(), resTemplate)->GetPrototype());
             #else
@@ -415,12 +458,21 @@ struct HttpServer {
         Local<FunctionTemplate> httpServer = FunctionTemplate::New(isolate, HttpServer::createServer);
         httpServer->InstanceTemplate()->SetInternalFieldCount(1);
 
+        #if V8_MAJOR_VERSION >= 10
+        httpServer->Set(isolate, "createServer", FunctionTemplate::New(isolate, HttpServer::createServer));
+        httpServer->Set(isolate, "getExpressApp", FunctionTemplate::New(isolate, HttpServer::getExpressApp));
+        httpServer->Set(isolate, "getResponsePrototype", FunctionTemplate::New(isolate, HttpServer::getResponsePrototype));
+        httpServer->Set(isolate, "getRequestPrototype", FunctionTemplate::New(isolate, HttpServer::getRequestPrototype));
+        httpServer->PrototypeTemplate()->Set(isolate, "listen", FunctionTemplate::New(isolate, HttpServer::listen));
+        httpServer->PrototypeTemplate()->Set(isolate, "on", FunctionTemplate::New(isolate, HttpServer::on));
+        #else
         httpServer->Set(String::NewFromUtf8(isolate, "createServer"), FunctionTemplate::New(isolate, HttpServer::createServer));
         httpServer->Set(String::NewFromUtf8(isolate, "getExpressApp"), FunctionTemplate::New(isolate, HttpServer::getExpressApp));
         httpServer->Set(String::NewFromUtf8(isolate, "getResponsePrototype"), FunctionTemplate::New(isolate, HttpServer::getResponsePrototype));
         httpServer->Set(String::NewFromUtf8(isolate, "getRequestPrototype"), FunctionTemplate::New(isolate, HttpServer::getRequestPrototype));
         httpServer->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "listen"), FunctionTemplate::New(isolate, HttpServer::listen));
         httpServer->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "on"), FunctionTemplate::New(isolate, HttpServer::on));
+        #endif
 
         reqTemplate.Reset(isolate, Request::getTemplateObject(isolate));
         resTemplate.Reset(isolate, Response::getTemplateObject(isolate));
